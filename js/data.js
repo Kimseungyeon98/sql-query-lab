@@ -689,13 +689,13 @@
     {
       id: 'agg-top-commented-posts', category: 'aggregate', difficulty: 'medium', schemaId: 'community', type: 'query',
       title: '댓글 많은 게시글 TOP 5',
-      scenario: '운영자: "요즘 핫한 글이 뭔지 보려고요. 댓글 많은 순으로 게시글 제목이랑 댓글 수 TOP 5 뽑아주세요."',
-      hints: ['posts와 comments를 JOIN한 뒤 post_id(또는 posts.id)로 GROUP BY 하세요.', 'COUNT(comments.id)로 댓글 수를 세고 내림차순 정렬 후 LIMIT 5.'],
+      scenario: '운영자: "요즘 핫한 글이 뭔지 보려고요. 댓글 많은 순으로 게시글 제목이랑 댓글 수 TOP 5 뽑아주세요. 댓글 수가 같으면 게시글 id가 작은 순으로 해주세요."',
+      hints: ['posts와 comments를 JOIN한 뒤 post_id(또는 posts.id)로 GROUP BY 하세요.', 'COUNT(comments.id)로 댓글 수를 세고, ORDER BY 댓글수 DESC, 게시글 id ASC 로 정렬한 뒤 LIMIT 5.', '댓글 수가 같은 글이 여러 개일 때는 보조 정렬 기준이 없으면 결과가 매번 달라질 수 있어서, 실무에서도 ORDER BY 뒤에 id 같은 보조 기준을 꼭 붙입니다.'],
       concept: 'JOIN과 GROUP BY를 함께 쓸 때는 "무엇을 기준으로 묶을지"를 먼저 정하고, SELECT절의 집계되지 않은 컬럼은 전부 GROUP BY에 포함돼야 합니다 (SQLite는 관대하지만 MySQL strict mode/PostgreSQL은 에러를 냅니다).',
       pattern: 'JOIN + GROUP BY + LIMIT',
-      solutionSql: 'SELECT p.id, p.title, COUNT(c.id) AS comment_count FROM posts p JOIN comments c ON c.post_id = p.id GROUP BY p.id, p.title ORDER BY comment_count DESC LIMIT 5',
+      solutionSql: 'SELECT p.title, COUNT(c.id) AS comment_count FROM posts p JOIN comments c ON c.post_id = p.id GROUP BY p.id, p.title ORDER BY comment_count DESC, p.id ASC LIMIT 5',
       orderMatters: true,
-      starterSql: '-- posts와 comments를 조인하고 게시글별 댓글수를 세어 많은 순 상위 5개를 조회하세요\nSELECT\n',
+      starterSql: '-- posts와 comments를 조인해서 게시글 제목, 댓글 수를 조회하세요 (댓글 많은 순, 같으면 id 작은 순, 상위 5개)\nSELECT\n',
     },
     {
       id: 'agg-dept-avg-salary', category: 'aggregate', difficulty: 'medium', schemaId: 'hr_payroll', type: 'query',

@@ -85,21 +85,48 @@
     if (!res) return [];
     return res.values.map((row) => row.map(normalizeCell));
   }
+  function rowsMatch(userRows, solRows, orderMatters) {
+    let u = userRows.map((r) => r.join('\u0001'));
+    let s = solRows.map((r) => r.join('\u0001'));
+    if (!orderMatters) { u = u.slice().sort(); s = s.slice().sort(); }
+    return JSON.stringify(u) === JSON.stringify(s);
+  }
+
+  /* n개 중 k개를 원래 순서를 유지한 채 고르는 모든 조합의 컬럼 인덱스 */
+  function columnCombinations(n, k) {
+    const out = [];
+    (function pick(start, cur) {
+      if (cur.length === k) { out.push(cur.slice()); return; }
+      for (let i = start; i < n; i++) { cur.push(i); pick(i + 1, cur); cur.pop(); }
+    })(0, []);
+    return out;
+  }
+
+  /* 정답과 같은 개수의 컬럼이면 그대로 비교하고, 사용자가 컬럼을 더 많이 조회했으면(예: SELECT *)
+     그중 정답과 값이 일치하는 컬럼 조합이 있는지 찾아서 비교한다. (별칭은 무시) */
   function compareResults(userRes, solRes, orderMatters) {
     if (!userRes || !solRes) return { ok: false, reason: '결과 행이 없습니다' };
-    if (userRes.columns.length !== solRes.columns.length) return { ok: false, reason: `컬럼 개수가 다릅니다 (${userRes.columns.length} vs ${solRes.columns.length})` };
-    let u = normalizeResult(userRes);
-    let s = normalizeResult(solRes);
-    if (u.length !== s.length) return { ok: false, reason: `행 개수가 다릅니다 (${u.length} vs ${s.length})` };
-    if (!orderMatters) {
-      u = u.map((r) => r.join('')).sort();
-      s = s.map((r) => r.join('')).sort();
-    } else {
-      u = u.map((r) => r.join(''));
-      s = s.map((r) => r.join(''));
+    const k = solRes.columns.length;
+    const n = userRes.columns.length;
+    if (n < k) {
+      return { ok: false, reason: `컬럼이 부족합니다 — 내 결과 ${n}개, 기대 ${k}개 (${solRes.columns.join(', ')})` };
     }
-    const ok = JSON.stringify(u) === JSON.stringify(s);
-    return { ok, reason: ok ? '' : '행 내용이 다릅니다' };
+    const userRows = normalizeResult(userRes);
+    const solRows = normalizeResult(solRes);
+    if (userRows.length !== solRows.length) {
+      return { ok: false, reason: `행 개수가 다릅니다 (${userRows.length} vs ${solRows.length})` };
+    }
+    if (n === k) {
+      const ok = rowsMatch(userRows, solRows, orderMatters);
+      return { ok, reason: ok ? '' : '행 내용이 다릅니다', note: '' };
+    }
+    for (const combo of columnCombinations(n, k)) {
+      const projected = userRows.map((row) => combo.map((i) => row[i]));
+      if (rowsMatch(projected, solRows, orderMatters)) {
+        return { ok: true, reason: '', note: '추가로 조회한 컬럼은 제외하고 채점했어요' };
+      }
+    }
+    return { ok: false, reason: `행 내용이 다르거나 필요한 컬럼이 없습니다 — 기대 컬럼: ${solRes.columns.join(', ')}`, note: '' };
   }
 
   /* ============================================================
@@ -115,6 +142,7 @@
     problemBrief: document.getElementById('problemBrief'),
     problemTitle: document.getElementById('problemTitle'),
     problemScenario: document.getElementById('problemScenario'),
+    expectedColumns: document.getElementById('expectedColumns'),
     hintBtn: document.getElementById('hintBtn'),
     conceptBtn: document.getElementById('conceptBtn'),
     schemaToggleBtn: document.getElementById('schemaToggleBtn'),
@@ -431,6 +459,13 @@
     renderProblemBrief(problem);
     renderSchemaPanel(schema);
 
+    if (state.cachedSolutionResult) {
+      el.expectedColumns.textContent = '📋 정답 컬럼 (이 순서대로): ' + state.cachedSolutionResult.columns.join(', ') + '  ·  별칭(AS)은 달라도 됩니다';
+      el.expectedColumns.classList.remove('hidden');
+    } else {
+      el.expectedColumns.classList.add('hidden');
+    }
+
     if (problem.type === 'short-answer') {
       setupShortAnswer(problem);
     } else {
@@ -505,6 +540,7 @@
 
     let passed = true;
     const reasons = [];
+    let passNote = '';
 
     if (!problem.skipResultCheck && problem.solutionSql) {
       if (!state.cachedSolutionResult) {
@@ -512,6 +548,7 @@
       } else {
         const cmp = compareResults(result, state.cachedSolutionResult, !!problem.orderMatters);
         if (!cmp.ok) { passed = false; reasons.push(cmp.reason || '결과가 정답과 다릅니다'); }
+        else if (cmp.note) passNote = cmp.note;
       }
     }
 
@@ -545,7 +582,7 @@
     }
 
     if (passed) {
-      el.runStatus.textContent = '✅ 정답입니다!';
+      el.runStatus.textContent = '✅ 정답입니다!' + (passNote ? ` (${passNote})` : '');
       el.runStatus.className = 'status-ok';
       markSolved(problem.id);
     } else {
